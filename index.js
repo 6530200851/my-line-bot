@@ -11,7 +11,7 @@ const config = {
 
 const client = new line.Client(config);
 
-app.post('/webhook', line.middleware(config), (req, res) => {
+app.post('/callback', line.middleware(config), (req, res) => {
   Promise.all(req.body.events.map(handleEvent))
     .then((result) => res.json(result))
     .catch((err) => {
@@ -82,4 +82,5 @@ async function handleEvent(event) {
     type: 'text',
     text: 'กดที่เมนูด้านล่าง หรือพิมพ์คำว่า "เมนู" เพื่อสั่งน้ำได้เลยครับ',
   });
+
 }
