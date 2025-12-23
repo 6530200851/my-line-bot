@@ -2,16 +2,17 @@
   "dependencies": {
     "@line/bot-sdk": "^10.5.0",
     "dotenv": "^17.2.3",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "google-auth-library": "^10.5.0",
+    "google-spreadsheet": "^5.0.2"
   },
   "name": "projecthydrobot",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
-  "devDependencies": {},
- "scripts": {
-  "start": "node index.js"
-},
+  "scripts": {
+    "start": "node index.js"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",

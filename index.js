@@ -9,6 +9,16 @@ const config = {
   channelSecret: process.env.CHANNEL_SECRET || 'ใส่_Secret_ใน_ไฟล์_env_นะ',
 };
 
+const { GoogleSpreadsheet } = require('google-spreadsheet');
+const { JWT } = require('google-auth-library');
+
+// ตั้งค่าการยืนยันตัวตนกับ Google
+const serviceAccountAuth = new JWT({
+  email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+  key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'), // แก้ไขเรื่องการขึ้นบรรทัดใหม่
+  scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+});
+
 const client = new line.Client(config);
 
 app.post('/callback', line.middleware(config), (req, res) => {
