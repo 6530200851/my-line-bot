@@ -65,11 +65,11 @@ async function handleEvent(event) {
         columns: [
           {
             // เปลี่ยนลิงก์ด้านล่างเป็นลิงก์รูปภาพบนอินเทอร์เน็ต (HTTPS)
-            imageUrl: 'https://images.unsplash.com/photo-1559839914-17aae19cea9e?w=500', 
+            imageUrl: 'https://bangpleestationery.com/wp-content/uploads/2023/04/%E0%B8%99%E0%B9%89%E0%B8%B3%E0%B8%84%E0%B8%A3%E0%B8%B4%E0%B8%AA%E0%B8%95%E0%B8%B1%E0%B8%A5.jpg', 
             action: { type: 'postback', data: 'action=select_brand&item=BrandA', label: 'ยี่ห้อ คริสตัล' }
           },
           {
-            imageUrl: 'https://images.unsplash.com/photo-1559839914-17aae19cea9e?w=500', 
+            imageUrl: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQPMVhMOKc6jIJP0GTzj_l8tpGs7ZPsUXRx9Q&s', 
             action: { type: 'postback', data: 'action=select_brand&item=BrandB', label: 'ยี่ห้อ สิงห์' }
           }
         ]
@@ -84,3 +84,4 @@ async function handleEvent(event) {
   });
 
 }
+
