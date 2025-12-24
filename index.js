@@ -116,7 +116,7 @@ async function handleEvent(event) {
   if (event.type !== 'message' || event.message.type !== 'text') return null;
   const userText = event.message.text;
 
-  if (userText === 'สั่งน้ำ') {
+  if (userText === 'สั่งน้ำดื่ม') {
     // สร้างรายการคอลัมน์จากข้อมูลใน Sheet (คอลัมน์ desc ในรูป image_53be67.png)
     const columns = rows.map(row => ({
       imageUrl: 'https://cdn-icons-png.flaticon.com/512/3105/3105807.png', // รูปเริ่มต้น
