@@ -47,55 +47,6 @@ app.listen(port, () => {
   console.log(`=================================`);
 });
 
-// ฟังก์ชั่นทำงาน
-// async function handleEvent(event) {
-//   // 1. จัดการการกดที่รูปภาพ (Postback)
-//   if (event.type === 'postback') {
-//     const data = event.postback.data; // ตรงนี้จะได้รับค่า 'action=select_brand&item=BrandA'
-//     // เพิ่มโค้ดสำหรับตอบกลับขนาดน้ำต่อที่นี่...
-//     return client.replyMessage(event.replyToken, { 
-//       type: 'text', 
-//       text: `คุณได้เลือกยี่ห้อ ${data.includes('BrandA') ? 'คริสตัล' : 'สิงห์'} เรียบร้อยครับ` 
-//     });
-//   }
-
-//   // 2. จัดการข้อความพิมพ์ (Message)
-//   if (event.type !== 'message' || event.message.type !== 'text') {
-//     return Promise.resolve(null);
-//   }
-
-//   const userText = event.message.text;
-
-//   // ถ้าลูกค้ากดปุ่ม "สั่งน้ำ" จาก Rich Menu หรือพิมพ์เข้ามา
-//   if (userText === 'เมนู' || userText === 'สั่งน้ำ' || userText === 'สั่งน้ำดื่ม') {
-//     return client.replyMessage(event.replyToken, {
-//       type: 'template',
-//       altText: 'กรุณาเลือกยี่ห้อน้ำดื่ม',
-//       template: {
-//         type: 'image_carousel',
-//         columns: [
-//           {
-//             // เปลี่ยนลิงก์ด้านล่างเป็นลิงก์รูปภาพบนอินเทอร์เน็ต (HTTPS)
-//             imageUrl: 'https://bangpleestationery.com/wp-content/uploads/2023/04/%E0%B8%99%E0%B9%89%E0%B8%B3%E0%B8%84%E0%B8%A3%E0%B8%B4%E0%B8%AA%E0%B8%95%E0%B8%B1%E0%B8%A5.jpg', 
-//             action: { type: 'postback', data: 'action=select_brand&item=BrandA', label: 'ยี่ห้อ คริสตัล' }
-//           },
-//           {
-//             imageUrl: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQPMVhMOKc6jIJP0GTzj_l8tpGs7ZPsUXRx9Q&s', 
-//             action: { type: 'postback', data: 'action=select_brand&item=BrandB', label: 'ยี่ห้อ สิงห์' }
-//           }
-//         ]
-//       }
-//     });
-//   }
-
-//   // ข้อความตอบกลับปกติ
-//   return client.replyMessage(event.replyToken, {
-//     type: 'text',
-//     text: 'กดที่เมนูด้านล่าง หรือพิมพ์คำว่า "เมนู" เพื่อสั่งน้ำได้เลยครับ',
-//   });
-
-// }
-
 // async function handleEvent(event) {
 //   // --- ส่วนโหลดข้อมูลจาก Google Sheets ---
 //   const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID, serviceAccountAuth);
@@ -147,27 +98,31 @@ async function handleEvent(event) {
   const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID, serviceAccountAuth);
   await doc.loadInfo();
 
-  // 1. จัดการการกดปุ่ม (Postback)
+  // 1. ส่วนจัดการการกดปุ่ม (Postback)
   if (event.type === 'postback') {
-    const data = event.postback.data; // ตัวอย่าง data: action=select_size&brand=สิงห์
+    const data = event.postback.data;
     const params = new URLSearchParams(data);
     const action = params.get('action');
     const brand = params.get('brand');
     const size = params.get('size');
 
-    // สเต็ปที่ 2: หลังจากเลือกยี่ห้อเสร็จ -> ให้เลือกขนาดต่อ (ดึงจาก Sheet หน้าที่ 2)
+    // สเต็ปที่ 2: หลังจากเลือกยี่ห้อ (Brand) -> ให้เลือกขนาดต่อ (Size)
     if (action === 'select_size') {
-      const sizeSheet = doc.sheetsByIndex[1]; // หน้าที่ 2 (index 1)
+      // เปลี่ยนจาก index เป็นการระบุชื่อหน้าตรงๆ (เช่น 'Sheet2' หรือชื่อที่คุณตั้งไว้)
+      const sizeSheet = doc.sheetsByTitle['size']; // *** เปลี่ยนชื่อให้ตรงกับใน Google Sheets ***
       const sizeRows = await sizeSheet.getRows();
       
-      const sizeColumns = sizeRows.map(row => ({
-        imageUrl: 'https://cdn-icons-png.flaticon.com/512/3105/3105807.png',
-        action: {
-          type: 'postback',
-          label: `ขนาด ${row.get('size')}`, // สมมติคอลัมน์ชื่อ size
-          data: `action=confirm_option&brand=${brand}&size=${row.get('size')}`
-        }
-      })).slice(0, 10);
+      const sizeColumns = sizeRows.map(row => {
+        const sizeValue = row.get('desc'); 
+        return {
+          imageUrl: 'https://cdn-icons-png.flaticon.com/512/3105/3105807.png',
+          action: {
+            type: 'postback',
+            label: `ขนาด ${sizeValue}`, 
+            data: `action=confirm_option&brand=${brand}&size=${sizeValue}`
+          }
+        };
+      }).filter(col => col.action.label !== 'ขนาด undefined').slice(0, 10);
 
       return client.replyMessage(event.replyToken, {
         type: 'template',
@@ -176,14 +131,14 @@ async function handleEvent(event) {
       });
     }
 
-    // สเต็ปที่ 3: หลังจากเลือกขนาดเสร็จ -> ถามว่าจะชำระเงิน หรือ เลือกเพิ่ม
+    // สเต็ปที่ 3: ยืนยันรายการ
     if (action === 'confirm_option') {
       return client.replyMessage(event.replyToken, {
         type: 'template',
-        altText: 'คุณจะทำรายการต่อหรือไม่?',
+        altText: 'ยืนยันรายการ',
         template: {
           type: 'confirm',
-          text: `คุณเลือก: ${brand} ${size}\nต้องการทำอะไรต่อ?`,
+          text: `รายการที่เลือก: ${brand} ขนาด ${size}\nต้องการทำอะไรต่อ?`,
           actions: [
             { type: 'message', label: 'เลือกเพิ่ม', text: 'สั่งน้ำดื่ม' },
             { type: 'message', label: 'ชำระเงินเลย', text: 'ชำระเงิน' }
@@ -193,35 +148,29 @@ async function handleEvent(event) {
     }
   }
 
-  // 2. จัดการการพิมพ์
+  // 2. ส่วนจัดการการพิมพ์ข้อความ
   if (event.type !== 'message' || event.message.type !== 'text') return null;
   const userText = event.message.text;
 
-  // สเต็ปที่ 1: พิมพ์ "สั่งน้ำดื่ม" -> เลือกยี่ห้อ (ดึงจาก Sheet หน้าที่ 1)
+  // สเต็ปที่ 1: เลือกยี่ห้อ (Brand)
   if (userText === 'สั่งน้ำดื่ม') {
-    const brandSheet = doc.sheetsByIndex[0]; // หน้าที่ 1 (index 0)
+    // เปลี่ยนจาก index เป็นการระบุชื่อหน้าตรงๆ (เช่น 'Sheet1' หรือชื่อที่คุณตั้งไว้)
+    const brandSheet = doc.sheetsByTitle['bland']; // *** เปลี่ยนชื่อให้ตรงกับใน Google Sheets ***
     const brandRows = await brandSheet.getRows();
 
     const brandColumns = brandRows.map(row => ({
       imageUrl: 'https://cdn-icons-png.flaticon.com/512/3105/3105807.png',
       action: {
         type: 'postback',
-        label: `เลือก ${row.get('desc')}`, // คอลัมน์ desc
+        label: `เลือก ${row.get('desc')}`, 
         data: `action=select_size&brand=${row.get('desc')}`
       }
-    })).slice(0, 10);
+    })).filter(col => col.action.label !== 'เลือก undefined').slice(0, 10);
 
     return client.replyMessage(event.replyToken, {
       type: 'template',
       altText: 'กรุณาเลือกยี่ห้อ',
       template: { type: 'image_carousel', columns: brandColumns }
-    });
-  }
-
-  if (userText === 'ชำระเงิน') {
-    return client.replyMessage(event.replyToken, {
-      type: 'text',
-      text: 'กรุณาโอนเงินมาที่เลขบัญชี 123-456-xxx และส่งหลักฐานการโอนได้เลยครับ'
     });
   }
 }
