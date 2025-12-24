@@ -127,49 +127,56 @@ async function handleEvent(event) {
       });
     }
 
-    // สเต็ปที่ 3: เลือกขนาดเสร็จ -> แสดงปุ่มยืนยันเพื่อดูราคา
+    // สเต็ปที่ 3: เลือกขนาดเสร็จ -> บันทึกลงตะกร้าชั่วคราวและถามจำนวน
     if (action === 'confirm_option') {
-      const priceSheet = doc.sheetsByTitle['price']; // อ้างอิงตามชื่อหน้าในรูป
-      const priceRows = await priceSheet.getRows();
+      const cartSheet = doc.sheetsByTitle['cart'];
+      await cartSheet.addRow({ 
+        userId: event.source.userId, 
+        brand: brand, 
+        size: size 
+      }); 
 
-      // ค้นหาราคาโดยเทียบ bland และ size จากหน้า price
-      const targetRow = priceRows.find(row => 
-        row.get('bland') === brand && row.get('size') === size
-      );
-
-      const price = targetRow ? targetRow.get('price') : '0';
-
-      return client.replyMessage(event.replyToken, [
-        {
-          type: 'text',
-          text: `ยืนยันรายการสั่งซื้อ:\n💧 ยี่ห้อ: ${brand}\n📏 ขนาด: ${size}\n💰 ยอดชำระ: ${price} บาท\n\nโอนเงินได้ที่: ธนาคาร XXX เลขบัญชี 123-x-xxxxx-x`
-        },
-        {
-          type: 'template',
-          altText: 'ชำระเงิน',
-          template: {
-            type: 'buttons',
-            thumbnailImageUrl: 'https://cdn-icons-png.flaticon.com/512/2489/2489610.png',
-            title: 'ชำระเงินเรียบร้อยแล้ว?',
-            text: 'กดปุ่มด้านล่างเพื่อแนบไฟล์สลิป',
-            actions: [{
-              type: 'uri',
-              label: 'กดเพื่อส่งสลิป',
-              uri: 'https://line.me/R/nv/cameraRoll/single'
-            }]
-          }
-        }
-      ]);
+      return client.replyMessage(event.replyToken, {
+        type: 'text',
+        text: `คุณเลือก ${brand} ขนาด ${size}\n\n👉 กรุณาพิมพ์ "จำนวน" ที่ต้องการสั่งเป็นตัวเลขครับ`
+      });
     }
-  } // ปิดส่วน postback
+  }
 
   // 2. ส่วนจัดการการพิมพ์ข้อความ
   if (event.type !== 'message' || event.message.type !== 'text') return null;
   const userText = event.message.text;
 
-  // สเต็ปที่ 1: พิมพ์ "สั่งน้ำดื่ม" -> แสดงยี่ห้อจากหน้า bland
+  // ตรวจสอบว่าเป็นตัวเลขจำนวนหรือไม่
+  const isNumber = /^\d+$/.test(userText);
+  if (isNumber) {
+    const cartSheet = doc.sheetsByTitle['cart'];
+    const rows = await cartSheet.getRows();
+    // ค้นหารายการล่าสุดที่ลูกค้านี้เลือกไว้แต่ยังไม่ได้ใส่จำนวน
+    const userCart = rows.reverse().find(row => row.get('userId') === event.source.userId && !row.get('qty'));
+
+    if (userCart) {
+      userCart.set('qty', userText);
+      await userCart.save();
+
+      return client.replyMessage(event.replyToken, {
+        type: 'template',
+        altText: 'เลือกทำรายการต่อ',
+        template: {
+          type: 'confirm',
+          text: `ใส่จำนวน ${userText} รายการเรียบร้อย\nต้องการสั่งเพิ่มหรือชำระเงินเลยครับ?`,
+          actions: [
+            { type: 'message', label: 'สั่งน้ำเพิ่ม', text: 'สั่งน้ำดื่ม' },
+            { type: 'message', label: 'ชำระเงินเลย', text: 'ยืนยันการสั่งซื้อ' }
+          ]
+        }
+      });
+    }
+  }
+
+  // สเต็ปที่ 1: พิมพ์ "สั่งน้ำดื่ม"
   if (userText === 'สั่งน้ำดื่ม') {
-    const brandSheet = doc.sheetsByTitle['bland']; // อ้างอิงตามรูป
+    const brandSheet = doc.sheetsByTitle['bland'];
     const brandRows = await brandSheet.getRows();
 
     const brandColumns = brandRows.map(row => ({
@@ -187,4 +194,51 @@ async function handleEvent(event) {
       template: { type: 'image_carousel', columns: brandColumns }
     });
   }
-} // ปิดฟังก์ชัน handleEvent
+
+  // สเต็ปสุดท้าย: ยืนยันการสั่งซื้อ -> คำนวณยอดรวมและรัน ID ลงหน้า Order
+  if (userText === 'ยืนยันการสั่งซื้อ') {
+    const cartSheet = doc.sheetsByTitle['cart'];
+    const orderSheet = doc.sheetsByTitle['Order'];
+    const priceSheet = doc.sheetsByTitle['price'];
+    
+    const cartRows = await cartSheet.getRows();
+    const userItems = cartRows.filter(row => row.get('userId') === event.source.userId);
+
+    if (userItems.length === 0) return null;
+
+    const orderRows = await orderSheet.getRows();
+    let nextId = orderRows.length + 1; // รัน ID ต่อเนื่อง
+
+    let summary = "รายการสั่งซื้อทั้งหมด:\n";
+    let grandTotal = 0;
+    let blandList = [];
+
+    for (const item of userItems) {
+      const pRows = await priceSheet.getRows();
+      const pRow = pRows.find(r => r.get('bland') === item.get('brand') && r.get('size') === item.get('size'));
+      
+      const price = pRow ? parseInt(pRow.get('price')) : 0;
+      const qty = parseInt(item.get('qty'));
+      const total = price * qty;
+      
+      summary += `- ${item.get('brand')} ${item.get('size')} x ${qty} = ${total} บาท\n`;
+      grandTotal += total;
+      blandList.push(`${item.get('brand')} ${item.get('size')} (${qty})`);
+      
+      await item.delete(); // ล้างข้อมูลในตะกร้าชั่วคราว
+    }
+
+    // บันทึกลงหน้า Order
+    await orderSheet.addRow({
+      id: nextId,
+      bland: blandList.join(', '),
+      total: grandTotal,
+      status: 'รอชำระเงิน'
+    });
+
+    return client.replyMessage(event.replyToken, {
+      type: 'text',
+      text: `${summary}\n💰 ยอดรวมทั้งสิ้น: ${grandTotal} บาท\n\nโอนเงินแล้วกรุณาส่งหลักฐานการโอนได้เลยครับ!`
+    });
+  }
+}
