@@ -98,19 +98,18 @@ async function handleEvent(event) {
   const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID, serviceAccountAuth);
   await doc.loadInfo();
 
-  // 1. ส่วนจัดการการกดปุ่ม (Postback)
+  // --- 1. ส่วนจัดการ Postback (การกดปุ่มเลือก) ---
   if (event.type === 'postback') {
     const data = event.postback.data;
     const params = new URLSearchParams(data);
     const action = params.get('action');
-    const brand = params.get('brand'); // ดึงค่าจากปุ่มที่กด
+    const brand = params.get('brand');
     const size = params.get('size');
 
-    // สเต็ปที่ 2: เลือกยี่ห้อเสร็จ -> ส่งรายการ "ขนาด" ให้เลือกต่อ
+    // เลือกยี่ห้อเสร็จ -> ส่งรายการขนาดให้เลือกต่อ
     if (action === 'select_size') {
       const sizeSheet = doc.sheetsByTitle['size'];
       const sizeRows = await sizeSheet.getRows();
-      
       const sizeColumns = sizeRows.map(row => ({
         imageUrl: 'https://cdn-icons-png.flaticon.com/512/3105/3105807.png',
         action: {
@@ -127,36 +126,37 @@ async function handleEvent(event) {
       });
     }
 
-    // สเต็ปที่ 3: เลือกขนาดเสร็จ -> บันทึกลงตะกร้า (cart) และถามจำนวน
+    // เลือกขนาดเสร็จ -> บันทึกจองลงตะกร้า cart และถามจำนวน
     if (action === 'confirm_option') {
-      const cartSheet = doc.sheetsByTitle['cart']; //
+      const cartSheet = doc.sheetsByTitle['cart'];
       await cartSheet.addRow({ 
-        userId: event.source.userId, //
-        brand: brand, //
-        size: size  //
+        userId: event.source.userId, 
+        brand: brand, 
+        size: size 
       }); 
 
       return client.replyMessage(event.replyToken, {
         type: 'text',
-        text: `คุณเลือก ${brand} ขนาด ${size}\n\n👉 กรุณาพิมพ์ "จำนวน" ที่ต้องการสั่งเป็นตัวเลขครับ`
+        text: `คุณเลือก ${brand} ขนาด ${size}\n\n👉 กรุณาพิมพ์ "จำนวน" ที่ต้องการสั่งเป็นตัวเลขครับ (เช่น 3)`
       });
     }
   }
 
-  // 2. ส่วนจัดการการพิมพ์ข้อความ
+  // --- 2. ส่วนจัดการข้อความ (Text Message) ---
   if (event.type !== 'message' || event.message.type !== 'text') return null;
   const userText = event.message.text;
 
-  // ตรวจสอบว่าเป็นตัวเลขจำนวนหรือไม่ (เพื่อใส่ค่าลงในตะกร้า)
-  const isNumber = /^\d+$/.test(userText);
-  if (isNumber) {
-    const cartSheet = doc.sheetsByTitle['cart']; //
+  // ก. ตรวจสอบถ้าลูกค้าพิมพ์ "จำนวน" (ตัวเลข)
+  const matchNumber = userText.match(/\d+/); 
+  if (matchNumber) {
+    const qty = matchNumber[0];
+    const cartSheet = doc.sheetsByTitle['cart'];
     const rows = await cartSheet.getRows();
-    // ค้นหารายการล่าสุดที่ยังไม่มีจำนวน (qty)
+    // หาแถวล่าสุดที่ยังไม่มีจำนวน
     const userCart = rows.reverse().find(row => row.get('userId') === event.source.userId && !row.get('qty'));
 
     if (userCart) {
-      userCart.set('qty', userText); //
+      userCart.set('qty', qty);
       await userCart.save();
 
       return client.replyMessage(event.replyToken, {
@@ -164,21 +164,20 @@ async function handleEvent(event) {
         altText: 'เลือกทำรายการต่อ',
         template: {
           type: 'confirm',
-          text: `รับทราบครับ: ${userCart.get('brand')} จำนวน ${userText} รายการ\nต้องการสั่งเพิ่มหรือชำระเงินเลยครับ?`,
+          text: `บันทึกจำนวน ${qty} เรียบร้อยครับ\nต้องการสั่งอย่างอื่นเพิ่ม หรือชำระเงินเลย?`,
           actions: [
-            { type: 'message', label: 'สั่งน้ำเพิ่ม', text: 'สั่งน้ำดื่ม' },
-            { type: 'message', label: 'ชำระเงินเลย', text: 'ยืนยันการสั่งซื้อ' }
+            { type: 'message', label: 'สั่งเพิ่ม', text: 'สั่งน้ำดื่ม' },
+            { type: 'message', label: 'ชำระเงินเลย', text: 'สรุปยอดสั่งซื้อ' }
           ]
         }
       });
     }
   }
 
-  // สเต็ปที่ 1: พิมพ์ "สั่งน้ำดื่ม"
+  // ข. พิมพ์ "สั่งน้ำดื่ม" เพื่อเริ่มใหม่
   if (userText === 'สั่งน้ำดื่ม') {
-    const brandSheet = doc.sheetsByTitle['bland']; //
+    const brandSheet = doc.sheetsByTitle['bland'];
     const brandRows = await brandSheet.getRows();
-
     const brandColumns = brandRows.map(row => ({
       imageUrl: 'https://cdn-icons-png.flaticon.com/512/3105/3105807.png',
       action: {
@@ -195,52 +194,47 @@ async function handleEvent(event) {
     });
   }
 
-  // สเต็ปสุดท้าย: ยืนยันการสั่งซื้อ -> คำนวณยอดรวมและรัน ID ลงหน้า Order
-  if (userText === 'ยืนยันการสั่งซื้อ') {
-    const cartSheet = doc.sheetsByTitle['cart']; //
-    const orderSheet = doc.sheetsByTitle['Order']; //
-    const priceSheet = doc.sheetsByTitle['price']; //
+  // ค. พิมพ์ "สรุปยอดสั่งซื้อ" -> คำนวณราคาและรัน ID ลงหน้า Order
+  if (userText === 'สรุปยอดสั่งซื้อ') {
+    const cartSheet = doc.sheetsByTitle['cart'];
+    const orderSheet = doc.sheetsByTitle['Order'];
+    const priceSheet = doc.sheetsByTitle['price'];
     
     const cartRows = await cartSheet.getRows();
     const userItems = cartRows.filter(row => row.get('userId') === event.source.userId);
 
     if (userItems.length === 0) return null;
 
+    // รัน ID ต่อจากแถวเดิม
     const orderRows = await orderSheet.getRows();
-    let nextId = orderRows.length + 1; // รัน ID ต่อเนื่อง
+    const nextId = orderRows.length + 1;
 
-    let summary = "รายการสั่งซื้อทั้งหมดของคุณ:\n";
-    let grandTotal = 0;
-    let blandList = [];
-
-    const pRows = await priceSheet.getRows();
+    let totalAmount = 0;
+    let summaryText = "";
+    let itemNames = [];
 
     for (const item of userItems) {
-      // ค้นหาราคาโดยใช้ชื่อคอลัมน์ 'bland' และ 'size'
+      const pRows = await priceSheet.getRows();
       const pRow = pRows.find(r => r.get('bland') === item.get('brand') && r.get('size') === item.get('size'));
+      const price = pRow ? parseInt(pRow.get('price')) : 0;
+      const subTotal = price * parseInt(item.get('qty'));
       
-      const price = pRow ? parseInt(pRow.get('price')) : 0; //
-      const qty = parseInt(item.get('qty') || 0);
-      const total = price * qty;
-      
-      summary += `- ${item.get('brand')} ${item.get('size')} x ${qty} = ${total} บาท\n`;
-      grandTotal += total;
-      blandList.push(`${item.get('brand')} ${item.get('size')} (${qty})`);
-      
-      await item.delete(); // ล้างตะกร้าชั่วคราวหลังย้ายข้อมูลเสร็จ
+      totalAmount += subTotal;
+      itemNames.push(`${item.get('brand')} ${item.get('size')} (x${item.get('qty')})`);
+      summaryText += `- ${item.get('brand')} ${item.get('size')} x${item.get('qty')} = ${subTotal} บาท\n`;
+      await item.delete(); // ล้างตะกร้า
     }
 
-    // บันทึกลงหน้า Order ตามหัวตารางในรูป
     await orderSheet.addRow({
-      id: nextId, //
-      bland: blandList.join(', '), //
-      total: grandTotal, //
-      status: 'รอชำระเงิน' //
+      id: nextId,
+      bland: itemNames.join(', '),
+      total: totalAmount,
+      status: 'รอชำระเงิน'
     });
 
     return client.replyMessage(event.replyToken, {
       type: 'text',
-      text: `${summary}\n💰 ยอดรวมทั้งสิ้น: ${grandTotal} บาท\n\nสามารถโอนเงินได้ที่ธนาคาร XXX เลขบัญชี XXX-X-XXXXX-X และส่งสลิปได้เลยครับ!`
+      text: `สรุปรายการสั่งซื้อ #${nextId}\n${summaryText}\n💰 ยอดรวม: ${totalAmount} บาท\n\nโอนเงินแล้วส่งสลิปได้เลยครับ!`
     });
   }
 }
