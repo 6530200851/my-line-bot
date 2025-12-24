@@ -173,4 +173,47 @@ async function handleEvent(event) {
       template: { type: 'image_carousel', columns: brandColumns }
     });
   }
+
+  if (userText === 'ชำระเงิน') {
+  // 1. ดึงข้อมูลจากหน้าที่เก็บรายการจับคู่ (หน้าที่ 3 หรือหน้าที่ชื่อ 'PriceList')
+  const priceSheet = doc.sheetsByTitle['PriceList']; // *** เปลี่ยนชื่อให้ตรงกับหน้าที่มี ยี่ห้อ|ขนาด|ราคา ***
+  const priceRows = await priceSheet.getRows();
+
+  // ตัวอย่างนี้สมมติว่าคุณเก็บรายการที่ลูกค้าเลือกล่าสุดไว้ (หรือดึงจากฐานข้อมูลตะกร้าสินค้า)
+  // ในที่นี้จะแสดงยอดรวมเบื้องต้น หรือยอดจากรายการล่าสุด
+  let totalAmount = 0;
+  let summaryText = "รายการสั่งซื้อของคุณ:\n";
+
+  // สมมติค้นหาราคาจากรายการที่คุณเลือก (คุณอาจต้องปรับ Logic การเก็บตะกร้าสินค้าเพิ่ม)
+  priceRows.forEach(row => {
+    // ตัวอย่าง: ดึงราคาทั้งหมดมาแสดงเป็นรายการแนะนำ หรือคำนวณตามที่ลูกค้าเลือก
+    summaryText += `- ${row.get('brand')} ${row.get('size')}: ${row.get('price')} บาท\n`;
+    totalAmount += parseInt(row.get('price') || 0);
+  });
+
+  return client.replyMessage(event.replyToken, [
+    {
+      type: 'text',
+      text: `${summaryText}\nยอดชำระทั้งหมด: ${totalAmount} บาท\n\nสามารถโอนเงินได้ที่:\nธนาคาร XXX\nเลขบัญชี 123-456-7890`
+    },
+    {
+      type: 'template',
+      altText: 'ส่งหลักฐานการชำระเงิน',
+      template: {
+        type: 'buttons',
+        thumbnailImageUrl: 'https://cdn-icons-png.flaticon.com/512/2489/2489610.png',
+        title: 'ชำระเงินเรียบร้อยแล้ว?',
+        text: 'กรุณากดปุ่มด้านล่างเพื่อแนบไฟล์สลิป',
+        actions: [
+          {
+            type: 'uri',
+            label: 'กดเพื่อส่งสลิป',
+            uri: 'https://line.me/R/nv/cameraRoll/single' // ลิงก์สำหรับเปิดอัลบั้มรูปใน LINE ทันที
+          }
+        ]
+      }
+    }
+    
+  ]);
+}
 }
