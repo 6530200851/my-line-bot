@@ -96,45 +96,132 @@ app.listen(port, () => {
 
 // }
 
+// async function handleEvent(event) {
+//   // --- ส่วนโหลดข้อมูลจาก Google Sheets ---
+//   const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID, serviceAccountAuth);
+//   await doc.loadInfo();
+//   const sheet = doc.sheetsByIndex[0]; // เลือก Sheet หน้าแรก
+//   const rows = await sheet.getRows(); // ดึงข้อมูลทุกแถว
+  
+//   // 1. จัดการการกดที่รูปภาพ (Postback)
+//   if (event.type === 'postback') {
+//     const data = event.postback.data; 
+//     return client.replyMessage(event.replyToken, { 
+//       type: 'text', 
+//       text: `บันทึกข้อมูล: ${data} เรียบร้อยครับ` 
+//     });
+//   }
+
+//   // 2. จัดการข้อความพิมพ์
+//   if (event.type !== 'message' || event.message.type !== 'text') return null;
+//   const userText = event.message.text;
+
+//   if (userText === 'สั่งน้ำดื่ม') {
+//     // สร้างรายการคอลัมน์จากข้อมูลใน Sheet (คอลัมน์ desc ในรูป image_53be67.png)
+//     const columns = rows.map(row => ({
+//       imageUrl: 'https://cdn-icons-png.flaticon.com/512/3105/3105807.png', // รูปเริ่มต้น
+//       action: { 
+//         type: 'postback', 
+//         label: `เลือก ${row.get('desc')}`, 
+//         data: `item=${row.get('desc')}` 
+//       }
+//     })).slice(0, 10); // LINE จำกัดสูงสุด 10 รูป
+
+    
+
+
+
+//     return client.replyMessage(event.replyToken, {
+//       type: 'template',
+//       altText: 'กรุณาเลือกรายการน้ำดื่ม',
+//       template: {
+//         type: 'image_carousel',
+//         columns: columns
+//       }
+//     });
+//   }
+// }
+
+
 async function handleEvent(event) {
-  // --- ส่วนโหลดข้อมูลจาก Google Sheets ---
   const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID, serviceAccountAuth);
   await doc.loadInfo();
-  const sheet = doc.sheetsByIndex[0]; // เลือก Sheet หน้าแรก
-  const rows = await sheet.getRows(); // ดึงข้อมูลทุกแถว
-  
-  // 1. จัดการการกดที่รูปภาพ (Postback)
+
+  // 1. จัดการการกดปุ่ม (Postback)
   if (event.type === 'postback') {
-    const data = event.postback.data; 
-    return client.replyMessage(event.replyToken, { 
-      type: 'text', 
-      text: `บันทึกข้อมูล: ${data} เรียบร้อยครับ` 
-    });
+    const data = event.postback.data; // ตัวอย่าง data: action=select_size&brand=สิงห์
+    const params = new URLSearchParams(data);
+    const action = params.get('action');
+    const brand = params.get('brand');
+    const size = params.get('size');
+
+    // สเต็ปที่ 2: หลังจากเลือกยี่ห้อเสร็จ -> ให้เลือกขนาดต่อ (ดึงจาก Sheet หน้าที่ 2)
+    if (action === 'select_size') {
+      const sizeSheet = doc.sheetsByIndex[1]; // หน้าที่ 2 (index 1)
+      const sizeRows = await sizeSheet.getRows();
+      
+      const sizeColumns = sizeRows.map(row => ({
+        imageUrl: 'https://cdn-icons-png.flaticon.com/512/3105/3105807.png',
+        action: {
+          type: 'postback',
+          label: `ขนาด ${row.get('size')}`, // สมมติคอลัมน์ชื่อ size
+          data: `action=confirm_option&brand=${brand}&size=${row.get('size')}`
+        }
+      })).slice(0, 10);
+
+      return client.replyMessage(event.replyToken, {
+        type: 'template',
+        altText: 'กรุณาเลือกขนาด',
+        template: { type: 'image_carousel', columns: sizeColumns }
+      });
+    }
+
+    // สเต็ปที่ 3: หลังจากเลือกขนาดเสร็จ -> ถามว่าจะชำระเงิน หรือ เลือกเพิ่ม
+    if (action === 'confirm_option') {
+      return client.replyMessage(event.replyToken, {
+        type: 'template',
+        altText: 'คุณจะทำรายการต่อหรือไม่?',
+        template: {
+          type: 'confirm',
+          text: `คุณเลือก: ${brand} ${size}\nต้องการทำอะไรต่อ?`,
+          actions: [
+            { type: 'message', label: 'เลือกเพิ่ม', text: 'สั่งน้ำดื่ม' },
+            { type: 'message', label: 'ชำระเงินเลย', text: 'ชำระเงิน' }
+          ]
+        }
+      });
+    }
   }
 
-  // 2. จัดการข้อความพิมพ์
+  // 2. จัดการการพิมพ์
   if (event.type !== 'message' || event.message.type !== 'text') return null;
   const userText = event.message.text;
 
+  // สเต็ปที่ 1: พิมพ์ "สั่งน้ำดื่ม" -> เลือกยี่ห้อ (ดึงจาก Sheet หน้าที่ 1)
   if (userText === 'สั่งน้ำดื่ม') {
-    // สร้างรายการคอลัมน์จากข้อมูลใน Sheet (คอลัมน์ desc ในรูป image_53be67.png)
-    const columns = rows.map(row => ({
-      imageUrl: 'https://cdn-icons-png.flaticon.com/512/3105/3105807.png', // รูปเริ่มต้น
-      action: { 
-        type: 'postback', 
-        label: `เลือก ${row.get('desc')}`, 
-        data: `item=${row.get('desc')}` 
+    const brandSheet = doc.sheetsByIndex[0]; // หน้าที่ 1 (index 0)
+    const brandRows = await brandSheet.getRows();
+
+    const brandColumns = brandRows.map(row => ({
+      imageUrl: 'https://cdn-icons-png.flaticon.com/512/3105/3105807.png',
+      action: {
+        type: 'postback',
+        label: `เลือก ${row.get('desc')}`, // คอลัมน์ desc
+        data: `action=select_size&brand=${row.get('desc')}`
       }
-    })).slice(0, 10); // LINE จำกัดสูงสุด 10 รูป
+    })).slice(0, 10);
 
     return client.replyMessage(event.replyToken, {
       type: 'template',
-      altText: 'กรุณาเลือกรายการน้ำดื่ม',
-      template: {
-        type: 'image_carousel',
-        columns: columns
-      }
+      altText: 'กรุณาเลือกยี่ห้อ',
+      template: { type: 'image_carousel', columns: brandColumns }
+    });
+  }
+
+  if (userText === 'ชำระเงิน') {
+    return client.replyMessage(event.replyToken, {
+      type: 'text',
+      text: 'กรุณาโอนเงินมาที่เลขบัญชี 123-456-xxx และส่งหลักฐานการโอนได้เลยครับ'
     });
   }
 }
-
