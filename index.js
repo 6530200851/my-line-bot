@@ -47,52 +47,94 @@ app.listen(port, () => {
   console.log(`=================================`);
 });
 
+// ฟังก์ชั่นทำงาน
+// async function handleEvent(event) {
+//   // 1. จัดการการกดที่รูปภาพ (Postback)
+//   if (event.type === 'postback') {
+//     const data = event.postback.data; // ตรงนี้จะได้รับค่า 'action=select_brand&item=BrandA'
+//     // เพิ่มโค้ดสำหรับตอบกลับขนาดน้ำต่อที่นี่...
+//     return client.replyMessage(event.replyToken, { 
+//       type: 'text', 
+//       text: `คุณได้เลือกยี่ห้อ ${data.includes('BrandA') ? 'คริสตัล' : 'สิงห์'} เรียบร้อยครับ` 
+//     });
+//   }
+
+//   // 2. จัดการข้อความพิมพ์ (Message)
+//   if (event.type !== 'message' || event.message.type !== 'text') {
+//     return Promise.resolve(null);
+//   }
+
+//   const userText = event.message.text;
+
+//   // ถ้าลูกค้ากดปุ่ม "สั่งน้ำ" จาก Rich Menu หรือพิมพ์เข้ามา
+//   if (userText === 'เมนู' || userText === 'สั่งน้ำ' || userText === 'สั่งน้ำดื่ม') {
+//     return client.replyMessage(event.replyToken, {
+//       type: 'template',
+//       altText: 'กรุณาเลือกยี่ห้อน้ำดื่ม',
+//       template: {
+//         type: 'image_carousel',
+//         columns: [
+//           {
+//             // เปลี่ยนลิงก์ด้านล่างเป็นลิงก์รูปภาพบนอินเทอร์เน็ต (HTTPS)
+//             imageUrl: 'https://bangpleestationery.com/wp-content/uploads/2023/04/%E0%B8%99%E0%B9%89%E0%B8%B3%E0%B8%84%E0%B8%A3%E0%B8%B4%E0%B8%AA%E0%B8%95%E0%B8%B1%E0%B8%A5.jpg', 
+//             action: { type: 'postback', data: 'action=select_brand&item=BrandA', label: 'ยี่ห้อ คริสตัล' }
+//           },
+//           {
+//             imageUrl: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQPMVhMOKc6jIJP0GTzj_l8tpGs7ZPsUXRx9Q&s', 
+//             action: { type: 'postback', data: 'action=select_brand&item=BrandB', label: 'ยี่ห้อ สิงห์' }
+//           }
+//         ]
+//       }
+//     });
+//   }
+
+//   // ข้อความตอบกลับปกติ
+//   return client.replyMessage(event.replyToken, {
+//     type: 'text',
+//     text: 'กดที่เมนูด้านล่าง หรือพิมพ์คำว่า "เมนู" เพื่อสั่งน้ำได้เลยครับ',
+//   });
+
+// }
+
 async function handleEvent(event) {
+  // --- ส่วนโหลดข้อมูลจาก Google Sheets ---
+  const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID, serviceAccountAuth);
+  await doc.loadInfo();
+  const sheet = doc.sheetsByIndex[0]; // เลือก Sheet หน้าแรก
+  const rows = await sheet.getRows(); // ดึงข้อมูลทุกแถว
+  
   // 1. จัดการการกดที่รูปภาพ (Postback)
   if (event.type === 'postback') {
-    const data = event.postback.data; // ตรงนี้จะได้รับค่า 'action=select_brand&item=BrandA'
-    // เพิ่มโค้ดสำหรับตอบกลับขนาดน้ำต่อที่นี่...
+    const data = event.postback.data; 
     return client.replyMessage(event.replyToken, { 
       type: 'text', 
-      text: `คุณได้เลือกยี่ห้อ ${data.includes('BrandA') ? 'คริสตัล' : 'สิงห์'} เรียบร้อยครับ` 
+      text: `บันทึกข้อมูล: ${data} เรียบร้อยครับ` 
     });
   }
 
-  // 2. จัดการข้อความพิมพ์ (Message)
-  if (event.type !== 'message' || event.message.type !== 'text') {
-    return Promise.resolve(null);
-  }
-
+  // 2. จัดการข้อความพิมพ์
+  if (event.type !== 'message' || event.message.type !== 'text') return null;
   const userText = event.message.text;
 
-  // ถ้าลูกค้ากดปุ่ม "สั่งน้ำ" จาก Rich Menu หรือพิมพ์เข้ามา
-  if (userText === 'เมนู' || userText === 'สั่งน้ำ' || userText === 'สั่งน้ำดื่ม') {
+  if (userText === 'สั่งน้ำ') {
+    // สร้างรายการคอลัมน์จากข้อมูลใน Sheet (คอลัมน์ desc ในรูป image_53be67.png)
+    const columns = rows.map(row => ({
+      imageUrl: 'https://cdn-icons-png.flaticon.com/512/3105/3105807.png', // รูปเริ่มต้น
+      action: { 
+        type: 'postback', 
+        label: `เลือก ${row.get('desc')}`, 
+        data: `item=${row.get('desc')}` 
+      }
+    })).slice(0, 10); // LINE จำกัดสูงสุด 10 รูป
+
     return client.replyMessage(event.replyToken, {
       type: 'template',
-      altText: 'กรุณาเลือกยี่ห้อน้ำดื่ม',
+      altText: 'กรุณาเลือกรายการน้ำดื่ม',
       template: {
         type: 'image_carousel',
-        columns: [
-          {
-            // เปลี่ยนลิงก์ด้านล่างเป็นลิงก์รูปภาพบนอินเทอร์เน็ต (HTTPS)
-            imageUrl: 'https://bangpleestationery.com/wp-content/uploads/2023/04/%E0%B8%99%E0%B9%89%E0%B8%B3%E0%B8%84%E0%B8%A3%E0%B8%B4%E0%B8%AA%E0%B8%95%E0%B8%B1%E0%B8%A5.jpg', 
-            action: { type: 'postback', data: 'action=select_brand&item=BrandA', label: 'ยี่ห้อ คริสตัล' }
-          },
-          {
-            imageUrl: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQPMVhMOKc6jIJP0GTzj_l8tpGs7ZPsUXRx9Q&s', 
-            action: { type: 'postback', data: 'action=select_brand&item=BrandB', label: 'ยี่ห้อ สิงห์' }
-          }
-        ]
+        columns: columns
       }
     });
   }
-
-  // ข้อความตอบกลับปกติ
-  return client.replyMessage(event.replyToken, {
-    type: 'text',
-    text: 'กดที่เมนูด้านล่าง หรือพิมพ์คำว่า "เมนู" เพื่อสั่งน้ำได้เลยครับ',
-  });
-
 }
-
 
