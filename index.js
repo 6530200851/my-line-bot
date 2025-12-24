@@ -98,15 +98,15 @@ async function handleEvent(event) {
   const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID, serviceAccountAuth);
   await doc.loadInfo();
 
-  // --- 1. ส่วนจัดการ Postback (การกดปุ่มเลือก) ---
+  // --- 1. ส่วนจัดการ Postback (การกดปุ่ม) ---
   if (event.type === 'postback') {
     const data = event.postback.data;
     const params = new URLSearchParams(data);
     const action = params.get('action');
-    const brand = params.get('brand');
-    const size = params.get('size');
+    const brand = params.get('brand'); // รับค่าจากการกดเลือกยี่ห้อ
+    const size = params.get('size');   // รับค่าจากการกดเลือกขนาด
 
-    // เลือกยี่ห้อเสร็จ -> ส่งรายการขนาดให้เลือกต่อ
+    // สเต็ปที่ 2: เลือกยี่ห้อเสร็จ -> แสดงขนาด
     if (action === 'select_size') {
       const sizeSheet = doc.sheetsByTitle['size'];
       const sizeRows = await sizeSheet.getRows();
@@ -126,7 +126,7 @@ async function handleEvent(event) {
       });
     }
 
-    // เลือกขนาดเสร็จ -> บันทึกจองลงตะกร้า cart และถามจำนวน
+    // สเต็ปที่ 3: เลือกขนาดเสร็จ -> บันทึกลงหน้า cart และถามจำนวน
     if (action === 'confirm_option') {
       const cartSheet = doc.sheetsByTitle['cart'];
       await cartSheet.addRow({ 
@@ -137,7 +137,7 @@ async function handleEvent(event) {
 
       return client.replyMessage(event.replyToken, {
         type: 'text',
-        text: `คุณเลือก ${brand} ขนาด ${size}\n\n👉 กรุณาพิมพ์ "จำนวน" ที่ต้องการสั่งเป็นตัวเลขครับ (เช่น 3)`
+        text: `คุณเลือก ${brand} ขนาด ${size}\n\n👉 กรุณาพิมพ์ "จำนวน" ที่ต้องการสั่งเป็นตัวเลขครับ`
       });
     }
   }
@@ -152,7 +152,7 @@ async function handleEvent(event) {
     const qty = matchNumber[0];
     const cartSheet = doc.sheetsByTitle['cart'];
     const rows = await cartSheet.getRows();
-    // หาแถวล่าสุดที่ยังไม่มีจำนวน
+    // หาแถวล่าสุดของลูกค้านี้ที่ยังไม่มีจำนวน (qty)
     const userCart = rows.reverse().find(row => row.get('userId') === event.source.userId && !row.get('qty'));
 
     if (userCart) {
@@ -174,9 +174,9 @@ async function handleEvent(event) {
     }
   }
 
-  // ข. พิมพ์ "สั่งน้ำดื่ม" เพื่อเริ่มใหม่
+  // ข. คำสั่งเริ่มสั่งซื้อ
   if (userText === 'สั่งน้ำดื่ม') {
-    const brandSheet = doc.sheetsByTitle['bland'];
+    const brandSheet = doc.sheetsByTitle['brand']; // เปลี่ยนจาก bland เป็น brand แล้ว
     const brandRows = await brandSheet.getRows();
     const brandColumns = brandRows.map(row => ({
       imageUrl: 'https://cdn-icons-png.flaticon.com/512/3105/3105807.png',
@@ -194,47 +194,50 @@ async function handleEvent(event) {
     });
   }
 
-  // ค. พิมพ์ "สรุปยอดสั่งซื้อ" -> คำนวณราคาและรัน ID ลงหน้า Order
+  // ค. คำสั่งสรุปยอดและบันทึกลงหน้า Order พร้อมรัน ID
   if (userText === 'สรุปยอดสั่งซื้อ') {
     const cartSheet = doc.sheetsByTitle['cart'];
-    const orderSheet = doc.sheetsByTitle['Order'];
-    const priceSheet = doc.sheetsByTitle['price'];
+    const orderSheet = doc.sheetsByTitle['Order']; 
+    const priceSheet = doc.sheetsByTitle['price']; 
     
     const cartRows = await cartSheet.getRows();
     const userItems = cartRows.filter(row => row.get('userId') === event.source.userId);
 
     if (userItems.length === 0) return null;
 
-    // รัน ID ต่อจากแถวเดิม
+    // รัน ID อัตโนมัติ
     const orderRows = await orderSheet.getRows();
     const nextId = orderRows.length + 1;
 
     let totalAmount = 0;
     let summaryText = "";
-    let itemNames = [];
+    let itemDetails = [];
 
     for (const item of userItems) {
       const pRows = await priceSheet.getRows();
-      const pRow = pRows.find(r => r.get('bland') === item.get('brand') && r.get('size') === item.get('size'));
-      const price = pRow ? parseInt(pRow.get('price')) : 0;
-      const subTotal = price * parseInt(item.get('qty'));
+      // ค้นหาราคาโดยใช้หัวตาราง brand
+      const pRow = pRows.find(r => r.get('brand') === item.get('brand') && r.get('size') === item.get('size'));
+      const pricePerUnit = pRow ? parseInt(pRow.get('price')) : 0;
+      const subTotal = pricePerUnit * parseInt(item.get('qty'));
       
       totalAmount += subTotal;
-      itemNames.push(`${item.get('brand')} ${item.get('size')} (x${item.get('qty')})`);
+      itemDetails.push(`${item.get('brand')} ${item.get('size')} x${item.get('qty')}`);
       summaryText += `- ${item.get('brand')} ${item.get('size')} x${item.get('qty')} = ${subTotal} บาท\n`;
-      await item.delete(); // ล้างตะกร้า
+      
+      await item.delete(); // ลบออกจากตะกร้าหลังประมวลผล
     }
 
+    // บันทึกลงหน้า Order
     await orderSheet.addRow({
       id: nextId,
-      bland: itemNames.join(', '),
+      brand: itemDetails.join(', '), // เปลี่ยน bland เป็น brand แล้ว
       total: totalAmount,
       status: 'รอชำระเงิน'
     });
 
     return client.replyMessage(event.replyToken, {
       type: 'text',
-      text: `สรุปรายการสั่งซื้อ #${nextId}\n${summaryText}\n💰 ยอดรวม: ${totalAmount} บาท\n\nโอนเงินแล้วส่งสลิปได้เลยครับ!`
+      text: `สรุปรายการสั่งซื้อ #${nextId}\n${summaryText}\n💰 ยอดรวมทั้งสิ้น: ${totalAmount} บาท\n\nโอนเงินแล้วกรุณาส่งสลิปได้เลยครับ!`
     });
   }
 }
