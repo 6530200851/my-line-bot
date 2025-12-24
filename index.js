@@ -174,22 +174,31 @@ async function handleEvent(event) {
     });
   }
 
-  if (userText === 'ชำระเงิน') {
-  // 1. ดึงข้อมูลจากหน้าที่เก็บรายการจับคู่ (หน้าที่ 3 หรือหน้าที่ชื่อ 'PriceList')
-  const priceSheet = doc.sheetsByTitle['PriceList']; // *** เปลี่ยนชื่อให้ตรงกับหน้าที่มี ยี่ห้อ|ขนาด|ราคา ***
+if (userText === 'ชำระเงิน') {
+  // 1. ดึงข้อมูลจากหน้าชื่อ 'price'
+  const priceSheet = doc.sheetsByTitle['price']; 
   const priceRows = await priceSheet.getRows();
 
-  // ตัวอย่างนี้สมมติว่าคุณเก็บรายการที่ลูกค้าเลือกล่าสุดไว้ (หรือดึงจากฐานข้อมูลตะกร้าสินค้า)
-  // ในที่นี้จะแสดงยอดรวมเบื้องต้น หรือยอดจากรายการล่าสุด
-  let totalAmount = 0;
-  let summaryText = "รายการสั่งซื้อของคุณ:\n";
+  // 2. สร้าง ID เพื่อค้นหา (สมมติว่าคุณเก็บค่า idBland และ idSize ไว้จากการเลือกก่อนหน้า)
+  // เช่น '1-1' หรือ 'B1-S1' ตามที่คุณต้องการต่อกัน
+  const currentFullId = `${idBland}-${idSize}`; 
 
-  // สมมติค้นหาราคาจากรายการที่คุณเลือก (คุณอาจต้องปรับ Logic การเก็บตะกร้าสินค้าเพิ่ม)
-  priceRows.forEach(row => {
-    // ตัวอย่าง: ดึงราคาทั้งหมดมาแสดงเป็นรายการแนะนำ หรือคำนวณตามที่ลูกค้าเลือก
-    summaryText += `- ${row.get('brand')} ${row.get('size')}: ${row.get('price')} บาท\n`;
-    totalAmount += parseInt(row.get('price') || 0);
-  });
+  // 3. ค้นหาแถวที่มี id ตรงกัน
+  const targetRow = priceRows.find(row => row.get('id') === currentFullId);
+
+  let summaryText = "รายการสั่งซื้อของคุณ:\n";
+  let totalAmount = 0;
+
+  if (targetRow) {
+    const blandName = targetRow.get('bland'); // หัวตารางสะกด bland ตามรูป
+    const sizeName = targetRow.get('size');
+    const priceValue = parseInt(targetRow.get('price') || 0);
+
+    summaryText += `- ${blandName} ${sizeName}: ${priceValue} บาท\n`;
+    totalAmount = priceValue;
+  } else {
+    summaryText = "ขออภัย ไม่พบข้อมูลราคาสำหรับรายการนี้";
+  }
 
   return client.replyMessage(event.replyToken, [
     {
@@ -208,12 +217,11 @@ async function handleEvent(event) {
           {
             type: 'uri',
             label: 'กดเพื่อส่งสลิป',
-            uri: 'https://line.me/R/nv/cameraRoll/single' // ลิงก์สำหรับเปิดอัลบั้มรูปใน LINE ทันที
+            uri: 'https://line.me/R/nv/cameraRoll/single'
           }
         ]
       }
     }
-    
   ]);
 }
 }
