@@ -103,7 +103,9 @@ async function handleEvent(event) {
     const data = event.postback.data;
     const params = new URLSearchParams(data);
     const action = params.get('action');
-    const brand = params.get('brand');
+    
+    // ประกาศตัวแปรที่ดึงจาก Postback Data ให้ครอบคลุมทุกเงื่อนไข
+    const brand = params.get('brand'); 
     const size = params.get('size');
 
     // สเต็ปที่ 2: เลือกยี่ห้อเสร็จ -> ส่งรายการ "ขนาด" ให้เลือกต่อ
@@ -116,6 +118,7 @@ async function handleEvent(event) {
         action: {
           type: 'postback',
           label: `ขนาด ${row.get('desc')}`, 
+          // ส่งค่า brand ต่อไปด้วยเพื่อให้ขั้นตอนถัดไปรู้ว่าเลือกยี่ห้ออะไร
           data: `action=confirm_option&brand=${brand}&size=${row.get('desc')}`
         }
       })).filter(col => col.action.label !== 'ขนาด undefined').slice(0, 10);
@@ -130,6 +133,7 @@ async function handleEvent(event) {
     // สเต็ปที่ 3: เลือกขนาดเสร็จ -> บันทึกลงตะกร้าชั่วคราวและถามจำนวน
     if (action === 'confirm_option') {
       const cartSheet = doc.sheetsByTitle['cart'];
+      // บันทึกเฉพาะข้อมูลที่มี เพื่อรอรับ 'qty' จากการพิมพ์ในภายหลัง
       await cartSheet.addRow({ 
         userId: event.source.userId, 
         brand: brand, 
@@ -147,12 +151,12 @@ async function handleEvent(event) {
   if (event.type !== 'message' || event.message.type !== 'text') return null;
   const userText = event.message.text;
 
-  // ตรวจสอบว่าเป็นตัวเลขจำนวนหรือไม่
+  // ตรวจสอบว่าเป็นตัวเลขจำนวนหรือไม่ (เพื่อใส่ค่าลงในตะกร้า)
   const isNumber = /^\d+$/.test(userText);
   if (isNumber) {
     const cartSheet = doc.sheetsByTitle['cart'];
     const rows = await cartSheet.getRows();
-    // ค้นหารายการล่าสุดที่ลูกค้านี้เลือกไว้แต่ยังไม่ได้ใส่จำนวน
+    // ค้นหาแถวล่าสุดของลูกค้านี้ที่ยังไม่ได้ระบุจำนวน
     const userCart = rows.reverse().find(row => row.get('userId') === event.source.userId && !row.get('qty'));
 
     if (userCart) {
@@ -176,7 +180,7 @@ async function handleEvent(event) {
 
   // สเต็ปที่ 1: พิมพ์ "สั่งน้ำดื่ม"
   if (userText === 'สั่งน้ำดื่ม') {
-    const brandSheet = doc.sheetsByTitle['bland'];
+    const brandSheet = doc.sheetsByTitle['bland']; // ตรวจสอบชื่อหน้า 'bland'
     const brandRows = await brandSheet.getRows();
 
     const brandColumns = brandRows.map(row => ({
@@ -198,8 +202,8 @@ async function handleEvent(event) {
   // สเต็ปสุดท้าย: ยืนยันการสั่งซื้อ -> คำนวณยอดรวมและรัน ID ลงหน้า Order
   if (userText === 'ยืนยันการสั่งซื้อ') {
     const cartSheet = doc.sheetsByTitle['cart'];
-    const orderSheet = doc.sheetsByTitle['Order'];
-    const priceSheet = doc.sheetsByTitle['price'];
+    const orderSheet = doc.sheetsByTitle['Order']; // หน้า Order
+    const priceSheet = doc.sheetsByTitle['price']; // หน้า price
     
     const cartRows = await cartSheet.getRows();
     const userItems = cartRows.filter(row => row.get('userId') === event.source.userId);
@@ -207,25 +211,27 @@ async function handleEvent(event) {
     if (userItems.length === 0) return null;
 
     const orderRows = await orderSheet.getRows();
-    let nextId = orderRows.length + 1; // รัน ID ต่อเนื่อง
+    let nextId = orderRows.length + 1; // ระบบรัน ID อัตโนมัติ
 
     let summary = "รายการสั่งซื้อทั้งหมด:\n";
     let grandTotal = 0;
     let blandList = [];
 
+    const pRows = await priceSheet.getRows();
+
     for (const item of userItems) {
-      const pRows = await priceSheet.getRows();
+      // ค้นหาราคาจากหน้า price โดยใช้ bland และ size
       const pRow = pRows.find(r => r.get('bland') === item.get('brand') && r.get('size') === item.get('size'));
       
       const price = pRow ? parseInt(pRow.get('price')) : 0;
-      const qty = parseInt(item.get('qty'));
+      const qty = parseInt(item.get('qty') || 0);
       const total = price * qty;
       
       summary += `- ${item.get('brand')} ${item.get('size')} x ${qty} = ${total} บาท\n`;
       grandTotal += total;
       blandList.push(`${item.get('brand')} ${item.get('size')} (${qty})`);
       
-      await item.delete(); // ล้างข้อมูลในตะกร้าชั่วคราว
+      await item.delete(); // ล้างตะกร้าชั่วคราว
     }
 
     // บันทึกลงหน้า Order
