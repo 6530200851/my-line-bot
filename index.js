@@ -100,53 +100,48 @@ async function handleEvent(event) {
 
   // 1. ส่วนจัดการการกดปุ่ม (Postback)
   if (event.type === 'postback') {
-    const data = event.postback.data;
-    const params = new URLSearchParams(data);
-    const action = params.get('action');
-    const brand = params.get('brand');
-    const size = params.get('size');
+  const data = event.postback.data;
+  const params = new URLSearchParams(data);
+  const action = params.get('action');
+  
+  // ดึงค่าเหล่านี้ออกมาเพื่อใช้ในทุก Step ของ Postback
+  const brand = params.get('brand');
+  const size = params.get('size');
+  
+  // สเต็ปที่ 3: เมื่อกดยืนยันรายการ หรือ ชำระเงินผ่านปุ่ม Postback
+  if (action === 'confirm_option') {
+    // ดึงหน้า 'price' มาค้นหา
+    const priceSheet = doc.sheetsByTitle['price']; 
+    const priceRows = await priceSheet.getRows();
 
-    // สเต็ปที่ 2: หลังจากเลือกยี่ห้อ (Brand) -> ให้เลือกขนาดต่อ (Size)
-    if (action === 'select_size') {
-      // เปลี่ยนจาก index เป็นการระบุชื่อหน้าตรงๆ (เช่น 'Sheet2' หรือชื่อที่คุณตั้งไว้)
-      const sizeSheet = doc.sheetsByTitle['size']; // *** เปลี่ยนชื่อให้ตรงกับใน Google Sheets ***
-      const sizeRows = await sizeSheet.getRows();
-      
-      const sizeColumns = sizeRows.map(row => {
-        const sizeValue = row.get('desc'); 
-        return {
-          imageUrl: 'https://cdn-icons-png.flaticon.com/512/3105/3105807.png',
-          action: {
-            type: 'postback',
-            label: `ขนาด ${sizeValue}`, 
-            data: `action=confirm_option&brand=${brand}&size=${sizeValue}`
-          }
-        };
-      }).filter(col => col.action.label !== 'ขนาด undefined').slice(0, 10);
+    // ค้นหาแถวที่ bland และ size ตรงกับที่เลือกมา
+    const targetRow = priceRows.find(row => 
+      row.get('bland') === brand && row.get('size') === size
+    );
 
-      return client.replyMessage(event.replyToken, {
+    const price = targetRow ? targetRow.get('price') : '0';
+
+    return client.replyMessage(event.replyToken, [
+      {
+        type: 'text',
+        text: `รายการ: ${brand} ${size}\nยอดชำระ: ${price} บาท\n\nโอนเงินได้ที่: ธนาคาร XXX เลขบัญชี 123-x-xxxxx-x`
+      },
+      {
         type: 'template',
-        altText: 'กรุณาเลือกขนาด',
-        template: { type: 'image_carousel', columns: sizeColumns }
-      });
-    }
-
-    // สเต็ปที่ 3: ยืนยันรายการ
-    if (action === 'confirm_option') {
-      return client.replyMessage(event.replyToken, {
-        type: 'template',
-        altText: 'ยืนยันรายการ',
+        altText: 'ส่งสลิป',
         template: {
-          type: 'confirm',
-          text: `รายการที่เลือก: ${brand} ขนาด ${size}\nต้องการทำอะไรต่อ?`,
-          actions: [
-            { type: 'message', label: 'เลือกเพิ่ม', text: 'สั่งน้ำดื่ม' },
-            { type: 'message', label: 'ชำระเงินเลย', text: 'ชำระเงิน' }
-          ]
+          type: 'buttons',
+          text: 'กดปุ่มเพื่อแนบไฟล์สลิป',
+          actions: [{
+            type: 'uri',
+            label: 'ส่งสลิป',
+            uri: 'https://line.me/R/nv/cameraRoll/single'
+          }]
         }
-      });
-    }
+      }
+    ]);
   }
+}
 
   // 2. ส่วนจัดการการพิมพ์ข้อความ
   if (event.type !== 'message' || event.message.type !== 'text') return null;
