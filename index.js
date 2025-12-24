@@ -100,57 +100,76 @@ async function handleEvent(event) {
 
   // 1. ส่วนจัดการการกดปุ่ม (Postback)
   if (event.type === 'postback') {
-  const data = event.postback.data;
-  const params = new URLSearchParams(data);
-  const action = params.get('action');
-  
-  // ดึงค่าเหล่านี้ออกมาเพื่อใช้ในทุก Step ของ Postback
-  const brand = params.get('brand');
-  const size = params.get('size');
-  
-  // สเต็ปที่ 3: เมื่อกดยืนยันรายการ หรือ ชำระเงินผ่านปุ่ม Postback
-  if (action === 'confirm_option') {
-    // ดึงหน้า 'price' มาค้นหา
-    const priceSheet = doc.sheetsByTitle['price']; 
-    const priceRows = await priceSheet.getRows();
+    const data = event.postback.data;
+    const params = new URLSearchParams(data);
+    const action = params.get('action');
+    const brand = params.get('brand');
+    const size = params.get('size');
 
-    // ค้นหาแถวที่ bland และ size ตรงกับที่เลือกมา
-    const targetRow = priceRows.find(row => 
-      row.get('bland') === brand && row.get('size') === size
-    );
-
-    const price = targetRow ? targetRow.get('price') : '0';
-
-    return client.replyMessage(event.replyToken, [
-      {
-        type: 'text',
-        text: `รายการ: ${brand} ${size}\nยอดชำระ: ${price} บาท\n\nโอนเงินได้ที่: ธนาคาร XXX เลขบัญชี 123-x-xxxxx-x`
-      },
-      {
-        type: 'template',
-        altText: 'ส่งสลิป',
-        template: {
-          type: 'buttons',
-          text: 'กดปุ่มเพื่อแนบไฟล์สลิป',
-          actions: [{
-            type: 'uri',
-            label: 'ส่งสลิป',
-            uri: 'https://line.me/R/nv/cameraRoll/single'
-          }]
+    // สเต็ปที่ 2: เลือกยี่ห้อเสร็จ -> ส่งรายการ "ขนาด" ให้เลือกต่อ
+    if (action === 'select_size') {
+      const sizeSheet = doc.sheetsByTitle['size'];
+      const sizeRows = await sizeSheet.getRows();
+      
+      const sizeColumns = sizeRows.map(row => ({
+        imageUrl: 'https://cdn-icons-png.flaticon.com/512/3105/3105807.png',
+        action: {
+          type: 'postback',
+          label: `ขนาด ${row.get('desc')}`, 
+          data: `action=confirm_option&brand=${brand}&size=${row.get('desc')}`
         }
-      }
-    ]);
-  }
-}
+      })).filter(col => col.action.label !== 'ขนาด undefined').slice(0, 10);
+
+      return client.replyMessage(event.replyToken, {
+        type: 'template',
+        altText: 'กรุณาเลือกขนาด',
+        template: { type: 'image_carousel', columns: sizeColumns }
+      });
+    }
+
+    // สเต็ปที่ 3: เลือกขนาดเสร็จ -> แสดงปุ่มยืนยันเพื่อดูราคา
+    if (action === 'confirm_option') {
+      const priceSheet = doc.sheetsByTitle['price']; // อ้างอิงตามชื่อหน้าในรูป
+      const priceRows = await priceSheet.getRows();
+
+      // ค้นหาราคาโดยเทียบ bland และ size จากหน้า price
+      const targetRow = priceRows.find(row => 
+        row.get('bland') === brand && row.get('size') === size
+      );
+
+      const price = targetRow ? targetRow.get('price') : '0';
+
+      return client.replyMessage(event.replyToken, [
+        {
+          type: 'text',
+          text: `ยืนยันรายการสั่งซื้อ:\n💧 ยี่ห้อ: ${brand}\n📏 ขนาด: ${size}\n💰 ยอดชำระ: ${price} บาท\n\nโอนเงินได้ที่: ธนาคาร XXX เลขบัญชี 123-x-xxxxx-x`
+        },
+        {
+          type: 'template',
+          altText: 'ชำระเงิน',
+          template: {
+            type: 'buttons',
+            thumbnailImageUrl: 'https://cdn-icons-png.flaticon.com/512/2489/2489610.png',
+            title: 'ชำระเงินเรียบร้อยแล้ว?',
+            text: 'กดปุ่มด้านล่างเพื่อแนบไฟล์สลิป',
+            actions: [{
+              type: 'uri',
+              label: 'กดเพื่อส่งสลิป',
+              uri: 'https://line.me/R/nv/cameraRoll/single'
+            }]
+          }
+        }
+      ]);
+    }
+  } // ปิดส่วน postback
 
   // 2. ส่วนจัดการการพิมพ์ข้อความ
   if (event.type !== 'message' || event.message.type !== 'text') return null;
   const userText = event.message.text;
 
-  // สเต็ปที่ 1: เลือกยี่ห้อ (Brand)
+  // สเต็ปที่ 1: พิมพ์ "สั่งน้ำดื่ม" -> แสดงยี่ห้อจากหน้า bland
   if (userText === 'สั่งน้ำดื่ม') {
-    // เปลี่ยนจาก index เป็นการระบุชื่อหน้าตรงๆ (เช่น 'Sheet1' หรือชื่อที่คุณตั้งไว้)
-    const brandSheet = doc.sheetsByTitle['bland']; // *** เปลี่ยนชื่อให้ตรงกับใน Google Sheets ***
+    const brandSheet = doc.sheetsByTitle['bland']; // อ้างอิงตามรูป
     const brandRows = await brandSheet.getRows();
 
     const brandColumns = brandRows.map(row => ({
@@ -168,55 +187,4 @@ async function handleEvent(event) {
       template: { type: 'image_carousel', columns: brandColumns }
     });
   }
-
-if (userText === 'ชำระเงิน') {
-  // 1. ดึงข้อมูลจากหน้าชื่อ 'price'
-  const priceSheet = doc.sheetsByTitle['price']; 
-  const priceRows = await priceSheet.getRows();
-
-  // 2. สร้าง ID เพื่อค้นหา (สมมติว่าคุณเก็บค่า idBland และ idSize ไว้จากการเลือกก่อนหน้า)
-  // เช่น '1-1' หรือ 'B1-S1' ตามที่คุณต้องการต่อกัน
-  const currentFullId = `${idBland}-${idSize}`; 
-
-  // 3. ค้นหาแถวที่มี id ตรงกัน
-  const targetRow = priceRows.find(row => row.get('id') === currentFullId);
-
-  let summaryText = "รายการสั่งซื้อของคุณ:\n";
-  let totalAmount = 0;
-
-  if (targetRow) {
-    const blandName = targetRow.get('bland'); // หัวตารางสะกด bland ตามรูป
-    const sizeName = targetRow.get('size');
-    const priceValue = parseInt(targetRow.get('price') || 0);
-
-    summaryText += `- ${blandName} ${sizeName}: ${priceValue} บาท\n`;
-    totalAmount = priceValue;
-  } else {
-    summaryText = "ขออภัย ไม่พบข้อมูลราคาสำหรับรายการนี้";
-  }
-
-  return client.replyMessage(event.replyToken, [
-    {
-      type: 'text',
-      text: `${summaryText}\nยอดชำระทั้งหมด: ${totalAmount} บาท\n\nสามารถโอนเงินได้ที่:\nธนาคาร XXX\nเลขบัญชี 123-456-7890`
-    },
-    {
-      type: 'template',
-      altText: 'ส่งหลักฐานการชำระเงิน',
-      template: {
-        type: 'buttons',
-        thumbnailImageUrl: 'https://cdn-icons-png.flaticon.com/512/2489/2489610.png',
-        title: 'ชำระเงินเรียบร้อยแล้ว?',
-        text: 'กรุณากดปุ่มด้านล่างเพื่อแนบไฟล์สลิป',
-        actions: [
-          {
-            type: 'uri',
-            label: 'กดเพื่อส่งสลิป',
-            uri: 'https://line.me/R/nv/cameraRoll/single'
-          }
-        ]
-      }
-    }
-  ]);
-}
-}
+} // ปิดฟังก์ชัน handleEvent
